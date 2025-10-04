@@ -1,3 +1,5 @@
+CREATE DATABASE country_data_warehouse;
+USE country_data_warehouse;
 CREATE TABLE dim_country (
     country_key INT AUTO_INCREMENT PRIMARY KEY,
     country_name VARCHAR(100),
