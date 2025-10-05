@@ -1,5 +1,6 @@
 import pandas as pd
 import xml.etree.ElementTree as ET
+from sqlalchemy import create_engine
 
 # read csv
 quality_data = pd.read_csv('Quality_of_Life-2.csv')
@@ -39,3 +40,19 @@ print("Data Preview:")
 print(pop_data.head())
 
 # Data extraction complete
+
+# transfer data in local sql environment called source_database
+# Replace with your actual MySQL credentials
+username = "root"         # your MySQL username
+password = "password" # your MySQL password
+host = "localhost"
+database = "source_database" 
+engine = create_engine(f'mysql+pymysql://{username}:{password}@{host}/{database}')
+
+quality_data.to_sql('quality_of_life', con=engine, if_exists='replace', index=False)
+gdp_data.to_sql('gdp', con=engine, if_exists='replace', index=False)
+pop_data.to_sql('population', con=engine, if_exists='replace', index=False)
+
+
+# then transform and load to target database warehouse
+
