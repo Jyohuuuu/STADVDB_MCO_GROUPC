@@ -101,9 +101,24 @@ all_countries.rename(columns={'Country Code': 'country_code'}, inplace=True)
 dim_country = all_countries[['country_key', 'country_name', 'country_code']]
 dim_country['region'] = None
 dim_country['continent'] = None
-
-
 print("dim_country created.")
 
 dim_country.to_sql('dim_country', con=dw_engine, if_exists='append', index=False)
+print("dim_country loaded to data warehouse.")
+
+print("for dim_time")
+print("Creating dim_time...")
+gdp_df['Year'] = pd.to_numeric(gdp_df['Year'], errors='coerce').dropna()
+pop_df['Year'] = pd.to_numeric(pop_df['Year'], errors='coerce').dropna()
+
+years_gdp = gdp_df['Year'].unique()
+years_pop = pop_df['Year'].unique()
+all_years = pd.Series(list(set(years_gdp) | set(years_pop))).unique()
+dim_time = pd.DataFrame({'time_key': all_years, 'year_value': all_years})
+dim_time['is_historical'] = dim_time['year_value'] < 2025 # Assuming current year is 2025
+dim_time['period_type'] = 'Annual'
+print(dim_time.shape)
+print("dim_time created.")
+dim_time.to_sql('dim_time', con=dw_engine, if_exists='append', index=False)
+print("dim_time loaded.")
 
