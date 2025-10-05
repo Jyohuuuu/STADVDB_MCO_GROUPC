@@ -95,8 +95,15 @@ all_countries['country_key'] = all_countries.index + 1
 country_codes = pop_df[['Country or Area', 'Country Code']].drop_duplicates() 
 all_countries = pd.merge(all_countries, country_codes, how='left', left_on='country_name', right_on='Country or Area')
 print(all_countries.head(5)) # testing purposes
+all_countries.drop(columns=['Country or Area'], inplace=True)
+all_countries.rename(columns={'Country Code': 'country_code'}, inplace=True)
+
+dim_country = all_countries[['country_key', 'country_name', 'country_code']]
+dim_country['region'] = None
+dim_country['continent'] = None
 
 
 print("dim_country created.")
 
+dim_country.to_sql('dim_country', con=dw_engine, if_exists='append', index=False)
 
