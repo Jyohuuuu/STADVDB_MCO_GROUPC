@@ -81,4 +81,22 @@ print("--- Staging data read successfully ---")
 
 # --- Transformations ---
 print("\n--- Transforming data ---")
+print("for dim_country")
+country_names_qol = quality_df[['country']].rename(columns={'country': 'country_name'}).drop_duplicates()
+print(country_names_qol.head(5)) # testing purposes
+country_names_pop = pop_df[['Country or Area']].rename(columns={'Country or Area': 'country_name'}).drop_duplicates()
+print(country_names_pop.head(5)) # testing purposes
+country_names_gdp = gdp_df[['Country Name']].rename(columns={'Country Name': 'country_name'}).drop_duplicates()
+print(country_names_gdp.head(5)) # testing purposes
+all_countries = pd.concat([country_names_qol, country_names_pop, country_names_gdp]).drop_duplicates().reset_index(drop=True)
+all_countries['country_key'] = all_countries.index + 1
+# im not sure what to do with the region and continent columns in the dim_country table yet
+
+country_codes = pop_df[['Country or Area', 'Country Code']].drop_duplicates() 
+all_countries = pd.merge(all_countries, country_codes, how='left', left_on='country_name', right_on='Country or Area')
+print(all_countries.head(5)) # testing purposes
+
+
+print("dim_country created.")
+
 
