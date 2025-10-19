@@ -2,13 +2,51 @@ import pandas as pd
 import xml.etree.ElementTree as ET
 from sqlalchemy import create_engine, text
 
-# read csv
+# --- Country name normalization map ---
+name_map = {
+    "bahamas": "bahamas, the",
+    "brunei": "brunei darussalam",
+    "cape verde": "cabo verde",
+    "democratic republic of the congo": "congo, dem. rep.",
+    "republic of the congo": "congo, rep.",
+    "ivory coast": "cote d'ivoire",
+    "czech republic": "czechia",
+    "egypt": "egypt, arab rep.",
+    "gambia": "gambia, the",
+    "hong kong": "hong kong sar, china",
+    "iran": "iran, islamic rep.",
+    "south korea": "korea, rep.",
+    "kyrgyzstan": "kyrgyz republic",
+    "laos": "lao pdr",
+    "macau": "macao sar, china",
+    "federated states of micronesia": "micronesia, fed. sts.",
+    "puerto rico": "puerto rico (us)",
+    "russia": "russian federation",
+    "são tomé and príncipe": "sao tome and principe",
+    "slovakia": "slovak republic",
+    "saint kitts and nevis": "st. kitts and nevis",
+    "saint lucia": "st. lucia",
+    "saint vincent and the grenadines": "st. vincent and the grenadines",
+    "syria": "syrian arab republic",
+    "turkey": "turkiye",
+    "venezuela": "venezuela, rb",
+    "vietnam": "viet nam",
+    "yemen": "yemen, rep."
+}
+
+def normalize_country(name):
+    """Standardize and map country names."""
+    if not isinstance(name, str):
+        return name
+    n = name.strip().lower()
+    return name_map.get(n, n)
+
+# --- Read CSV and Excel ---
 quality_data = pd.read_csv('Quality_of_Life-2.csv')
-# read xlsx
 gdp_data = pd.read_excel('2020-2025-2.xlsx')
+
 gdp_data = pd.melt(gdp_data, id_vars=['Country'], var_name='Year', value_name='Value')
 gdp_data.rename(columns={'Country': 'Country Name'}, inplace=True)
-
 
 # --- XML parsing logic ---
 tree = ET.parse('API_SP.POP.TOTL_DS2_en_xml_v2_1021474-2.xml')
@@ -26,66 +64,49 @@ for record in root.findall('./data/record'):
         else:
             record_data[field.attrib['name']] = field.text
     data.append(record_data)
-    
 
 pop_data = pd.DataFrame(data)
 pop_data.rename(columns={'Value': 'Population'}, inplace=True)
 
+# --- Normalize country names across datasets ---
+quality_data['country'] = quality_data['country'].apply(normalize_country)
+gdp_data['Country Name'] = gdp_data['Country Name'].apply(normalize_country)
+pop_data['Country or Area'] = pop_data['Country or Area'].apply(normalize_country)
 
+# --- Print Previews ---
 print("--- Quality of Life Data Columns ---")
 print(quality_data.columns)
-print("\nData Preview:")
-print(quality_data.head())
 print("\n--- GDP Data Columns ---")
 print(gdp_data.columns)
-print("\nData Preview:")
-print(gdp_data.head())
-print("\n--- Population Data from XML ---")
-print(f"Shape: {pop_data.shape}")
-print("Columns:", pop_data.columns)
-print("Data Preview:")
-print(pop_data.head())
+print("\n--- Population Data Columns ---")
+print(pop_data.columns)
 
-# Data extraction complete
-
-# transfer data in local sql environment called source_database
-# Replace with your actual MySQL credentials
-username = "root"         # your MySQL username
-password = "password" # your MySQL password
+# --- Transfer to Local SQL (staging) ---
+username = "root"
+password = "password"
 host = "localhost"
-database = "source_database" 
+database = "source_database"
 engine = create_engine(f'mysql+pymysql://{username}:{password}@{host}/{database}')
 
 quality_data.to_sql('quality_of_life', con=engine, if_exists='replace', index=False)
 gdp_data.to_sql('gdp', con=engine, if_exists='replace', index=False)
 pop_data.to_sql('population', con=engine, if_exists='replace', index=False)
 
-
-# then transform and load to target database warehouse
-
-# --- Transformation and Loading ---
-
-# Credentials for the data warehouse
+# --- Data Warehouse Setup ---
 dw_username = "root"
-dw_password = "Chem123!!"
+dw_password = "password"
 dw_host = "localhost"
 dw_database = "country_data_warehouse"
 dw_engine = create_engine(f'mysql+pymysql://{dw_username}:{dw_password}@{dw_host}/{dw_database}')
 
-# Read data from the staging database
 print("\n--- Reading data from staging database ---")
 quality_df = pd.read_sql('quality_of_life', con=engine)
 gdp_df = pd.read_sql('gdp', con=engine)
 pop_df = pd.read_sql('population', con=engine)
-print("--- Staging data read successfully ---")
 
-# --- Transformations ---
-# create dim_country
-print("Creating dim_country...")
-country_names_gdp = gdp_df[['Country Name']].rename(columns={'Country Name': 'country_name'}).drop_duplicates()
-country_names_qol = quality_df[['country']].rename(columns={'country': 'country_name'}).drop_duplicates()
-country_names_pop = pop_df[['Country or Area']].rename(columns={'Country or Area': 'country_name'}).drop_duplicates()
-all_countries = pd.concat([country_names_qol, country_names_pop, country_names_gdp]).drop_duplicates().reset_index(drop=True)
+print("--- Transformations ---")
+# --- dim_country ---
+all_countries = gdp_df[['Country Name']].rename(columns={'Country Name': 'country_name'}).drop_duplicates().reset_index(drop=True)
 all_countries['country_key'] = all_countries.index + 1
 
 country_codes = pop_df[['Country or Area', 'Country Code']].drop_duplicates()
@@ -96,24 +117,16 @@ all_countries.rename(columns={'Country Code': 'country_code'}, inplace=True)
 dim_country = all_countries[['country_key', 'country_name', 'country_code']]
 dim_country['region'] = None
 dim_country['continent'] = None
-print("dim_country created.")
 
-# create dim_time
-print("Creating dim_time...")
+# --- dim_time ---
 gdp_df['Year'] = pd.to_numeric(gdp_df['Year'], errors='coerce').dropna()
 pop_df['Year'] = pd.to_numeric(pop_df['Year'], errors='coerce').dropna()
-
-years_gdp = gdp_df['Year'].unique()
-years_pop = pop_df['Year'].unique()
-all_years = pd.Series(list(set(years_gdp) | set(years_pop))).unique()
+all_years = pd.Series(sorted(set(gdp_df['Year'].unique()) | set(pop_df['Year'].unique())))
 dim_time = pd.DataFrame({'time_key': all_years, 'year_value': all_years})
-dim_time['is_historical'] = dim_time['year_value'] < 2025 # Assuming current year is 2025
+dim_time['is_historical'] = dim_time['year_value'] < 2025
 dim_time['period_type'] = 'Annual'
-print("dim_time created.")
 
-# create dim_quality_of_life
-print("Creating dim_quality_of_life...")
-# clean data
+# --- dim_quality_of_life ---
 numeric_cols = [
     'Purchasing Power Value', 'Safety Value', 'Health Care Value', 'Climate Value',
     'Cost of Living Value', 'Property Price to Income Value', 'Traffic Commute Time Value',
@@ -144,15 +157,12 @@ dim_quality_of_life.rename(columns={
     'Property Price to Income Category': 'property_price_income_category',
     'Traffic Commute Time Category': 'traffic_commute_category',
     'Pollution Category': 'pollution_category',
-    'Quality of Life Category': 'quality_of_life_category',
+    'Quality of Life Category': 'quality_of_life_category'
 }, inplace=True)
-dim_quality_of_life['quality_tier'] = None # Placeholder
-dim_quality_of_life['development_status'] = None # Placeholder
-dim_quality_of_life = dim_quality_of_life[['country_key', 'purchasing_power_value', 'safety_value', 'health_care_value', 'climate_value', 'cost_of_living_value', 'property_price_income_value', 'traffic_commute_value', 'pollution_value', 'quality_of_life_value', 'purchasing_power_category', 'safety_category', 'health_care_category', 'climate_category', 'cost_of_living_category', 'property_price_income_category', 'traffic_commute_category', 'pollution_category', 'quality_of_life_category', 'quality_tier', 'development_status']]
-print("dim_quality_of_life created.")
+dim_quality_of_life['quality_tier'] = None
+dim_quality_of_life['development_status'] = None
 
-# Create fact_country_metrics
-print("Creating fact_country_metrics...")
+# --- fact_country_metrics ---
 pop_df['Year'] = pop_df['Year'].astype(int)
 gdp_df['Year'] = gdp_df['Year'].astype(int)
 fact_country_metrics = pd.merge(pop_df, gdp_df, how='inner', left_on=['Country or Area', 'Year'], right_on=['Country Name', 'Year'])
@@ -162,14 +172,13 @@ fact_country_metrics = pd.merge(fact_country_metrics, dim_time, how='inner', lef
 fact_country_metrics.rename(columns={'Population': 'population', 'Value': 'gdp_usd'}, inplace=True)
 fact_country_metrics['population'] = pd.to_numeric(fact_country_metrics['population'], errors='coerce').fillna(0)
 fact_country_metrics['gdp_usd'] = pd.to_numeric(fact_country_metrics['gdp_usd'], errors='coerce').fillna(0)
-fact_country_metrics['gdp_per_capita'] = fact_country_metrics.apply(lambda row: (row['gdp_usd'] * 1000000) / (row['population']) if row['population'] > 0 else 0, axis=1)
+fact_country_metrics['gdp_per_capita'] = fact_country_metrics.apply(lambda r: (r['gdp_usd'] * 1_000_000) / r['population'] if r['population'] > 0 else 0, axis=1)
 fact_country_metrics = fact_country_metrics[['country_key', 'time_key', 'gdp_usd', 'population', 'gdp_per_capita']]
-print("fact_country_metrics created.")
 
-print("--- Data transformation complete ---")
 
-# load data into data warehouse
-print("\n--- Loading data into data warehouse ---")
+dim_country['country_name'] = dim_country['country_name'].str.title()
+
+# --- Load to Warehouse ---
 with dw_engine.connect() as connection:
     with connection.begin():
         connection.execute(text("SET FOREIGN_KEY_CHECKS = 0;"))
@@ -180,12 +189,8 @@ with dw_engine.connect() as connection:
         connection.execute(text("SET FOREIGN_KEY_CHECKS = 1;"))
 
 dim_country.to_sql('dim_country', con=dw_engine, if_exists='append', index=False)
-print("dim_country loaded.")
 dim_time.to_sql('dim_time', con=dw_engine, if_exists='append', index=False)
-print("dim_time loaded.")
 dim_quality_of_life.to_sql('dim_quality_of_life', con=dw_engine, if_exists='append', index=False)
-print("dim_quality_of_life loaded.")
 fact_country_metrics.to_sql('fact_country_metrics', con=dw_engine, if_exists='append', index=False)
-print("fact_country_metrics loaded.")
 
 print("--- Data loaded into data warehouse successfully! ---")
