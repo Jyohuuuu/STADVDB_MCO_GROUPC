@@ -115,8 +115,6 @@ all_countries.drop(columns=['Country or Area'], inplace=True)
 all_countries.rename(columns={'Country Code': 'country_code'}, inplace=True)
 
 dim_country = all_countries[['country_key', 'country_name', 'country_code']]
-dim_country['region'] = None
-dim_country['continent'] = None
 
 # --- dim_time ---
 gdp_df['Year'] = pd.to_numeric(gdp_df['Year'], errors='coerce').dropna()
@@ -138,7 +136,7 @@ for col in numeric_cols:
     quality_df[col] = pd.to_numeric(quality_df[col], errors='coerce').fillna(0.0)
 
 dim_quality_of_life = pd.merge(quality_df, dim_country, how='inner', left_on='country', right_on='country_name')
-dim_quality_of_life = dim_quality_of_life.drop(columns=['country', 'country_name', 'country_code', 'region', 'continent'])
+dim_quality_of_life = dim_quality_of_life.drop(columns=['country', 'country_name', 'country_code'])
 dim_quality_of_life.rename(columns={
     'Purchasing Power Value': 'purchasing_power_value',
     'Safety Value': 'safety_value',

@@ -3,9 +3,7 @@ USE country_data_warehouse;
 CREATE TABLE dim_country (
     country_key INT AUTO_INCREMENT PRIMARY KEY,
     country_name VARCHAR(100),
-    country_code VARCHAR(3),
-    region VARCHAR(50),
-    continent VARCHAR(50)
+    country_code VARCHAR(3)
 );
 CREATE TABLE dim_time (
     time_key INT PRIMARY KEY,
