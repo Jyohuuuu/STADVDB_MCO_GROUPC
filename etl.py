@@ -14,11 +14,16 @@ name_map = {
     "egypt": "egypt, arab rep.",
     "gambia": "gambia, the",
     "hong kong": "hong kong sar, china",
+    "hong kong (china)": "hong kong sar, china",
     "iran": "iran, islamic rep.",
     "south korea": "korea, rep.",
+    "kosovo (disputed territory)": "kosovo",
     "kyrgyzstan": "kyrgyz republic",
     "laos": "lao pdr",
     "macau": "macao sar, china",
+    "macao": "macao sar, china",
+    "macao (china)": "macao sar, china",
+    "micronesia": "micronesia, fed. sts.",
     "federated states of micronesia": "micronesia, fed. sts.",
     "puerto rico": "puerto rico (us)",
     "russia": "russian federation",
@@ -35,7 +40,7 @@ name_map = {
 }
 
 def normalize_country(name):
-    """Standardize and map country names."""
+    """Standardize and map country names to a common lowercase form."""
     if not isinstance(name, str):
         return name
     n = name.strip().lower()
@@ -45,10 +50,15 @@ def normalize_country(name):
 quality_data = pd.read_csv('Quality_of_Life-2.csv')
 gdp_data = pd.read_excel('2020-2025-2.xlsx')
 
-gdp_data = pd.melt(gdp_data, id_vars=['Country'], var_name='Year', value_name='Value')
-gdp_data.rename(columns={'Country': 'Country Name'}, inplace=True)
+# --- Melt GDP data if wide format ---
+if 'Country' in gdp_data.columns:
+    gdp_data = pd.melt(gdp_data, id_vars=['Country'], var_name='Year', value_name='Value')
+    gdp_data.rename(columns={'Country': 'Country Name'}, inplace=True)
+else:
+    if 'Country Name' not in gdp_data.columns and 'Country' in gdp_data.columns:
+        gdp_data.rename(columns={'Country': 'Country Name'}, inplace=True)
 
-# --- XML parsing logic ---
+# --- Parse XML population file ---
 tree = ET.parse('API_SP.POP.TOTL_DS2_en_xml_v2_1021474-2.xml')
 root = tree.getroot()
 
@@ -56,30 +66,24 @@ data = []
 for record in root.findall('./data/record'):
     record_data = {}
     for field in record.findall('field'):
-        if field.attrib['name'] == 'Item':
+        name = field.attrib.get('name')
+        if name == 'Item':
             continue
-        if field.attrib['name'] == 'Country or Area':
+        if name == 'Country or Area':
             record_data['Country or Area'] = field.text
-            record_data['Country Code'] = field.attrib['key']
+            record_data['Country Code'] = field.attrib.get('key')
         else:
-            record_data[field.attrib['name']] = field.text
+            record_data[name] = field.text
     data.append(record_data)
 
 pop_data = pd.DataFrame(data)
-pop_data.rename(columns={'Value': 'Population'}, inplace=True)
+if 'Value' in pop_data.columns:
+    pop_data.rename(columns={'Value': 'Population'}, inplace=True)
 
 # --- Normalize country names across datasets ---
-quality_data['country'] = quality_data['country'].apply(normalize_country)
-gdp_data['Country Name'] = gdp_data['Country Name'].apply(normalize_country)
-pop_data['Country or Area'] = pop_data['Country or Area'].apply(normalize_country)
-
-# --- Print Previews ---
-print("--- Quality of Life Data Columns ---")
-print(quality_data.columns)
-print("\n--- GDP Data Columns ---")
-print(gdp_data.columns)
-print("\n--- Population Data Columns ---")
-print(pop_data.columns)
+quality_data['country_norm'] = quality_data['country'].apply(normalize_country)
+gdp_data['country_norm'] = gdp_data['Country Name'].apply(normalize_country)
+pop_data['country_norm'] = pop_data['Country or Area'].apply(normalize_country)
 
 # --- Transfer to Local SQL (staging) ---
 username = "root"
@@ -92,34 +96,45 @@ quality_data.to_sql('quality_of_life', con=engine, if_exists='replace', index=Fa
 gdp_data.to_sql('gdp', con=engine, if_exists='replace', index=False)
 pop_data.to_sql('population', con=engine, if_exists='replace', index=False)
 
-# --- Data Warehouse Setup ---
-dw_username = "root"
-dw_password = "password"
-dw_host = "localhost"
-dw_database = "country_data_warehouse"
-dw_engine = create_engine(f'mysql+pymysql://{dw_username}:{dw_password}@{dw_host}/{dw_database}')
-
-print("\n--- Reading data from staging database ---")
+# --- Read back from staging database ---
 quality_df = pd.read_sql('quality_of_life', con=engine)
 gdp_df = pd.read_sql('gdp', con=engine)
 pop_df = pd.read_sql('population', con=engine)
 
-print("--- Transformations ---")
+if 'country_norm' not in quality_df.columns:
+    quality_df['country_norm'] = quality_df['country'].apply(normalize_country)
+if 'country_norm' not in gdp_df.columns:
+    gdp_df['country_norm'] = gdp_df['Country Name'].apply(normalize_country)
+if 'country_norm' not in pop_df.columns:
+    pop_df['country_norm'] = pop_df['Country or Area'].apply(normalize_country)
+
+print("--- Preview ---")
+print("Unique countries → Quality:", quality_df['country_norm'].nunique(),
+      " | GDP:", gdp_df['country_norm'].nunique(),
+      " | Population:", pop_df['country_norm'].nunique())
+
 # --- dim_country ---
-all_countries = gdp_df[['Country Name']].rename(columns={'Country Name': 'country_name'}).drop_duplicates().reset_index(drop=True)
+all_countries = gdp_df[['country_norm']].drop_duplicates().reset_index(drop=True).rename(columns={'country_norm': 'country_name'})
 all_countries['country_key'] = all_countries.index + 1
 
-country_codes = pop_df[['Country or Area', 'Country Code']].drop_duplicates()
-all_countries = pd.merge(all_countries, country_codes, how='left', left_on='country_name', right_on='Country or Area')
-all_countries.drop(columns=['Country or Area'], inplace=True)
+country_codes = pop_df[['country_norm', 'Country Code']].drop_duplicates().rename(columns={'country_norm': 'country_name'})
+all_countries = pd.merge(all_countries, country_codes, how='left', on='country_name')
 all_countries.rename(columns={'Country Code': 'country_code'}, inplace=True)
 
-dim_country = all_countries[['country_key', 'country_name', 'country_code']]
+# --- Add Kosovo manually if missing ---
+if 'kosovo' not in all_countries['country_name'].values:
+    new_key = all_countries['country_key'].max() + 1
+    all_countries = pd.concat([
+        all_countries,
+        pd.DataFrame([{'country_key': new_key, 'country_name': 'kosovo', 'country_code': 'XKX'}])
+    ], ignore_index=True)
+
+dim_country = all_countries[['country_key', 'country_name', 'country_code']].copy()
 
 # --- dim_time ---
-gdp_df['Year'] = pd.to_numeric(gdp_df['Year'], errors='coerce').dropna()
-pop_df['Year'] = pd.to_numeric(pop_df['Year'], errors='coerce').dropna()
-all_years = pd.Series(sorted(set(gdp_df['Year'].unique()) | set(pop_df['Year'].unique())))
+gdp_df['Year'] = pd.to_numeric(gdp_df['Year'], errors='coerce')
+pop_df['Year'] = pd.to_numeric(pop_df['Year'], errors='coerce')
+all_years = sorted(set(gdp_df['Year'].dropna().unique()) | set(pop_df['Year'].dropna().unique()))
 dim_time = pd.DataFrame({'time_key': all_years, 'year_value': all_years})
 dim_time['is_historical'] = dim_time['year_value'] < 2025
 dim_time['period_type'] = 'Annual'
@@ -130,13 +145,33 @@ numeric_cols = [
     'Cost of Living Value', 'Property Price to Income Value', 'Traffic Commute Time Value',
     'Pollution Value', 'Quality of Life Value'
 ]
-
 for col in numeric_cols:
-    quality_df[col] = quality_df[col].astype(str).str.replace(',', '').str.replace(r'^\': \s*', '', regex=True)
-    quality_df[col] = pd.to_numeric(quality_df[col], errors='coerce').fillna(0.0)
+    if col in quality_df.columns:
+        quality_df[col] = quality_df[col].astype(str).str.replace(',', '').str.replace(r'^\': \s*', '', regex=True)
+        quality_df[col] = pd.to_numeric(quality_df[col], errors='coerce').fillna(0.0)
 
-dim_quality_of_life = pd.merge(quality_df, dim_country, how='inner', left_on='country', right_on='country_name')
-dim_quality_of_life = dim_quality_of_life.drop(columns=['country', 'country_name', 'country_code'])
+dim_quality_of_life = pd.merge(
+    quality_df,
+    dim_country.rename(columns={'country_name': 'country_name_norm'}),
+    how='left',
+    left_on='country_norm',
+    right_on='country_name_norm'
+)
+""" # debugging unmatched countries
+unmatched = sorted(set(quality_df['country_norm'].unique()) -
+                   set(dim_quality_of_life.loc[dim_quality_of_life['country_key'].notna(),
+                                               'country_name_norm'].unique()))
+if unmatched:
+    print("\n--- WARNING: Unmatched countries in Quality of Life ---")
+    for u in unmatched:
+        print("  -", u)
+else:
+    print("\nAll Quality of Life countries matched successfully.")
+    
+"""
+
+dim_quality_of_life = dim_quality_of_life[dim_quality_of_life['country_key'].notna()].copy()
+dim_quality_of_life = dim_quality_of_life.drop(columns=[c for c in ['country', 'country_norm', 'country_name_norm', 'country_code'] if c in dim_quality_of_life.columns])
 dim_quality_of_life.rename(columns={
     'Purchasing Power Value': 'purchasing_power_value',
     'Safety Value': 'safety_value',
@@ -161,22 +196,49 @@ dim_quality_of_life['quality_tier'] = None
 dim_quality_of_life['development_status'] = None
 
 # --- fact_country_metrics ---
-pop_df['Year'] = pop_df['Year'].astype(int)
-gdp_df['Year'] = gdp_df['Year'].astype(int)
-fact_country_metrics = pd.merge(pop_df, gdp_df, how='inner', left_on=['Country or Area', 'Year'], right_on=['Country Name', 'Year'])
-fact_country_metrics = pd.merge(fact_country_metrics, dim_country, how='inner', left_on='Country or Area', right_on='country_name')
-fact_country_metrics = pd.merge(fact_country_metrics, dim_time, how='inner', left_on='Year', right_on='year_value')
+pop_df['country_norm'] = pop_df['country_norm'].astype(str)
+gdp_df['country_norm'] = gdp_df['country_norm'].astype(str)
 
-fact_country_metrics.rename(columns={'Population': 'population', 'Value': 'gdp_usd'}, inplace=True)
-fact_country_metrics['population'] = pd.to_numeric(fact_country_metrics['population'], errors='coerce').fillna(0)
-fact_country_metrics['gdp_usd'] = pd.to_numeric(fact_country_metrics['gdp_usd'], errors='coerce').fillna(0)
-fact_country_metrics['gdp_per_capita'] = fact_country_metrics.apply(lambda r: (r['gdp_usd'] * 1_000_000) / r['population'] if r['population'] > 0 else 0, axis=1)
-fact_country_metrics = fact_country_metrics[['country_key', 'time_key', 'gdp_usd', 'population', 'gdp_per_capita']]
+fact_df = pd.merge(
+    pop_df,
+    gdp_df,
+    how='inner',
+    left_on=['country_norm', 'Year'],
+    right_on=['country_norm', 'Year'],
+    suffixes=('_pop', '_gdp')
+)
+fact_df = pd.merge(
+    fact_df,
+    dim_country.rename(columns={'country_name': 'country_norm'}),
+    how='left',
+    left_on='country_norm',
+    right_on='country_norm'
+)
+fact_df = pd.merge(fact_df, dim_time, how='left', left_on='Year', right_on='year_value')
 
+fact_df.rename(columns={'Population': 'population', 'Value': 'gdp_usd'}, inplace=True)
+fact_df['population'] = pd.to_numeric(fact_df['population'], errors='coerce').fillna(0)
+fact_df['gdp_usd'] = pd.to_numeric(fact_df['gdp_usd'], errors='coerce').fillna(0)
+fact_df['gdp_per_capita'] = fact_df.apply(
+    lambda r: (r['gdp_usd'] * 1_000_000) / r['population'] if (r.get('population', 0) and r['population'] > 0) else 0,
+    axis=1
+)
+fact_country_metrics = fact_df[['country_key', 'time_key', 'gdp_usd', 'population', 'gdp_per_capita']].copy()
 
+missing_fk = fact_country_metrics[fact_country_metrics['country_key'].isna()]
+if not missing_fk.empty:
+    print("\n--- WARNING: Missing country_key in fact_country_metrics ---")
+    print(missing_fk.head())
+
+# --- Final cleanup and load ---
 dim_country['country_name'] = dim_country['country_name'].str.title()
 
-# --- Load to Warehouse ---
+dw_username = "root"
+dw_password = "password"
+dw_host = "localhost"
+dw_database = "country_data_warehouse"
+dw_engine = create_engine(f'mysql+pymysql://{dw_username}:{dw_password}@{dw_host}/{dw_database}')
+
 with dw_engine.connect() as connection:
     with connection.begin():
         connection.execute(text("SET FOREIGN_KEY_CHECKS = 0;"))
@@ -191,4 +253,4 @@ dim_time.to_sql('dim_time', con=dw_engine, if_exists='append', index=False)
 dim_quality_of_life.to_sql('dim_quality_of_life', con=dw_engine, if_exists='append', index=False)
 fact_country_metrics.to_sql('fact_country_metrics', con=dw_engine, if_exists='append', index=False)
 
-print("--- Data loaded into data warehouse successfully! ---")
+print("\n--- Data loaded into data warehouse successfully! ---")
