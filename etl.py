@@ -192,8 +192,6 @@ dim_quality_of_life.rename(columns={
     'Pollution Category': 'pollution_category',
     'Quality of Life Category': 'quality_of_life_category'
 }, inplace=True)
-dim_quality_of_life['quality_tier'] = None
-dim_quality_of_life['development_status'] = None
 
 # --- fact_country_metrics ---
 pop_df['country_norm'] = pop_df['country_norm'].astype(str)

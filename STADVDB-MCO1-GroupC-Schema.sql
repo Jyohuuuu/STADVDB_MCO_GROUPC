@@ -34,8 +34,6 @@ CREATE TABLE dim_quality_of_life (
     pollution_category VARCHAR(20),
     quality_of_life_category VARCHAR(20),
     
-    quality_tier VARCHAR(20),
-    development_status VARCHAR(20),
     
     FOREIGN KEY (country_key) REFERENCES dim_country(country_key)
 );
