@@ -2,7 +2,7 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 
 dw_username = "root"
-dw_password = "Chem123!!"
+dw_password = "password"
 dw_host = "localhost"
 dw_database = "country_data_warehouse"
 dw_engine = create_engine(f'mysql+pymysql://{dw_username}:{dw_password}@{dw_host}/{dw_database}')
