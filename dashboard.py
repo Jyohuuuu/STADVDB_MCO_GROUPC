@@ -1,28 +1,119 @@
 import dash
-from dash import dcc
-from dash import html
+from dash import dcc, html, Input, Output, callback
 import plotly.express as px
-from reports import gdp_population_correlation_report
+import plotly.graph_objects as go
+from reports import gdp_population_correlation_report, cost_of_living_vs_purchasing_power_report
+import pandas as pd
+import random
 
 
-df = gdp_population_correlation_report()
-
+# Get Report Data
+gdp_pop_df = gdp_population_correlation_report()
+cost_living_df = cost_of_living_vs_purchasing_power_report()
 
 app = dash.Dash(__name__)
 
+# GDP vs Population Scatter Plot
+gdp_pop_fig = px.scatter(
+    gdp_pop_df, 
+    x="population", 
+    y="gdp_usd", 
+    color="country_name", 
+    hover_name="country_name",
+    size="population", 
+    size_max=60, 
+    log_x=True, 
+    log_y=True,
+    title="GDP vs. Population by Country",
+    labels={
+        "population": "Population (log scale)",
+        "gdp_usd": "GDP in USD (log scale)",
+        "country_name": "Country"
+    }
+)
 
-fig = px.scatter(df, x="population", y="gdp_usd", color="country_name", hover_name="country_name",
-                 size="population", size_max=60, log_x=True, log_y=True,
-                 title="GDP vs. Population")
+cost_living_clean = cost_living_df.dropna(subset=['country_name', 'avg_cost_of_living', 'avg_purchasing_power'])
+available_countries = sorted(cost_living_clean['country_name'].unique())
 
+random.seed(42)
+default_countries = random.sample(available_countries, min(10, len(available_countries)))
 
 app.layout = html.Div([
-    html.H1("Country Metrics Dashboard"),
-    dcc.Graph(
-        id='gdp-vs-population-scatter',
-        figure=fig
+    html.H1("Country Metrics Dashboard", style={'textAlign': 'center', 'marginBottom': 30}),
+    
+    html.Div([
+        html.P("Note: Some countries may have incomplete data and will not appear in all visualizations.", 
+               style={'textAlign': 'center', 'color': '#666', 'fontStyle': 'italic', 'marginBottom': 30})
+    ]),
+    
+    # GDP vs Population Section
+    html.Div([
+        html.H2("Economic Analysis"),
+        dcc.Graph(
+            id='gdp-vs-population-scatter',
+            figure=gdp_pop_fig
+        )
+    ], style={'marginBottom': 40}),
+    
+    # Cost of Living Section
+    html.Div([
+        html.H2("Quality of Life Analysis"),
+        html.Div([
+            html.Label("Select Countries:", style={'fontWeight': 'bold', 'marginBottom': 10}),
+            dcc.Dropdown(
+                id='country-dropdown',
+                options=[{'label': country, 'value': country} for country in available_countries],
+                value=default_countries,
+                multi=True,
+                placeholder="Select countries to display...",
+                style={'marginBottom': 20}
+            )
+        ]),
+        dcc.Graph(
+            id='cost-living-chart'
+        )
+    ], style={'marginBottom': 40})
+], style={'padding': 20})
+
+#for updating the cost of living chart based on selected countries
+@callback(
+    Output('cost-living-chart', 'figure'),
+    Input('country-dropdown', 'value')
+)
+def update_cost_living_chart(selected_countries):
+    if not selected_countries:
+        fig = px.bar(title="Please select countries to display")
+        return fig
+    
+    filtered_df = cost_living_clean[cost_living_clean['country_name'].isin(selected_countries)]
+    
+    total_countries_with_data = len(available_countries)
+    chart_title = f"Average Cost of Living vs Purchasing Power by Country<br><sub>Data available for {total_countries_with_data} countries</sub>"
+    
+    fig = px.bar(
+        filtered_df,
+        x="country_name",
+        y=["avg_cost_of_living", "avg_purchasing_power"],
+        title=chart_title,
+        labels={
+            "value": "Index Value",
+            "country_name": "Country",
+            "variable": "Metric"
+        },
+        barmode="group",
+        color_discrete_map={
+            "avg_cost_of_living": "#FF6B6B",
+            "avg_purchasing_power": "#4ECDC4"
+        }
     )
-])
+    fig.update_xaxes(tickangle=45)
+    fig.update_layout(
+        xaxis_title="Country",
+        yaxis_title="Index Value",
+        legend_title="Metric"
+    )
+    
+    return fig
 
 
 if __name__ == '__main__':
