@@ -252,3 +252,6 @@ dim_quality_of_life.to_sql('dim_quality_of_life', con=dw_engine, if_exists='appe
 fact_country_metrics.to_sql('fact_country_metrics', con=dw_engine, if_exists='append', index=False)
 
 print("\n--- Data loaded into data warehouse successfully! ---")
+
+
+
