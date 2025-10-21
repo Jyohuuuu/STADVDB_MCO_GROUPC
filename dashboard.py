@@ -2,7 +2,7 @@ import dash
 from dash import dcc, html, Input, Output, callback
 import plotly.express as px
 import plotly.graph_objects as go
-from reports import gdp_population_correlation_report, cost_of_living_vs_purchasing_power_report
+from reports import gdp_population_correlation_report, cost_of_living_vs_purchasing_power_report, climate_quality_vs_economic_development_report
 import pandas as pd
 import random
 
@@ -10,6 +10,7 @@ import random
 # Get Report Data
 gdp_pop_df = gdp_population_correlation_report()
 cost_living_df = cost_of_living_vs_purchasing_power_report()
+climate_gdp_df = climate_quality_vs_economic_development_report()
 
 app = dash.Dash(__name__)
 
@@ -37,6 +38,13 @@ available_countries = sorted(cost_living_clean['country_name'].unique())
 
 random.seed(42)
 default_countries = random.sample(available_countries, min(10, len(available_countries)))
+
+# Prepare climate-GDP data 
+climate_gdp_clean = climate_gdp_df.dropna(subset=['country_name', 'total_gdp_usd', 'climate_quality_2025'])
+climate_gdp_clean = climate_gdp_clean[climate_gdp_clean['country_name'].notna()]
+
+# Prepare heatmap countries list
+available_heatmap_countries = sorted(climate_gdp_clean['country_name'].unique())
 
 app.layout = html.Div([
     html.H1("Country Metrics Dashboard", style={'textAlign': 'center', 'marginBottom': 30}),
@@ -71,6 +79,25 @@ app.layout = html.Div([
         ]),
         dcc.Graph(
             id='cost-living-chart'
+        )
+    ], style={'marginBottom': 40}),
+    
+    # Climate Quality Heatmap Section
+    html.Div([
+        html.H2("Climate Quality vs Economic Development Heatmap"),
+        html.Div([
+            html.Label("Select Countries for Heatmap:", style={'fontWeight': 'bold', 'marginBottom': 10}),
+            dcc.Dropdown(
+                id='heatmap-country-dropdown',
+                options=[{'label': country, 'value': country} for country in available_heatmap_countries],
+                value=available_heatmap_countries[:15],
+                multi=True,
+                placeholder="Select countries to display in heatmap...",
+                style={'marginBottom': 20}
+            )
+        ]),
+        dcc.Graph(
+            id='climate-heatmap'
         )
     ], style={'marginBottom': 40})
 ], style={'padding': 20})
@@ -111,6 +138,60 @@ def update_cost_living_chart(selected_countries):
         xaxis_title="Country",
         yaxis_title="Index Value",
         legend_title="Metric"
+    )
+    
+    return fig
+
+@callback(
+    Output('climate-heatmap', 'figure'),
+    Input('heatmap-country-dropdown', 'value')
+)
+def update_climate_heatmap(selected_countries):
+    if not selected_countries:
+        fig = px.imshow([[0]], title="Please select countries to display")
+        return fig
+    
+    filtered_df = climate_gdp_clean[climate_gdp_clean['country_name'].isin(selected_countries)]
+    
+    if filtered_df.empty:
+        fig = px.imshow([[0]], title="No data available for selected countries")
+        return fig
+    
+    heatmap_data = filtered_df.pivot_table(
+        values='development_efficiency_ratio', 
+        index='country_name', 
+        columns='year_value', 
+        aggfunc='mean'
+    ).fillna(0)
+    
+    if heatmap_data.empty:
+        fig = px.imshow([[0]], title="No data available for selected countries")
+        return fig
+    
+    fig = px.imshow(
+        heatmap_data.values,
+        labels=dict(x="Year", y="Country", color="Development Efficiency Ratio"),
+        x=heatmap_data.columns,
+        y=heatmap_data.index,
+        title="Climate Quality vs Economic Development Efficiency (2020-2025)<br><sub>Higher values indicate better economic efficiency relative to climate quality</sub>",
+        color_continuous_scale="RdYlGn",
+        aspect="auto"
+    )
+    
+    fig.update_layout(
+        xaxis_title="Year",
+        yaxis_title="Country",
+        height=max(400, len(heatmap_data.index) * 35),
+        coloraxis_colorbar=dict(
+            title="Development Efficiency Ratio"
+        )
+    )
+    
+    fig.update_traces(
+        text=heatmap_data.round(2).values,
+        texttemplate="%{text}",
+        textfont={"size": 10},
+        hovertemplate="<b>%{y}</b><br>Year: %{x}<br>Efficiency Ratio: %{z:.2f}<extra></extra>"
     )
     
     return fig

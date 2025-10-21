@@ -41,6 +41,27 @@ def cost_of_living_vs_purchasing_power_report():
     
     return df
 
+def climate_quality_vs_economic_development_report():
+    #OLAP USED: SLICE
+    query = text("""
+    SELECT 
+        c.country_name,
+        t.year_value,
+        AVG(q.climate_value) AS climate_quality_2025,
+        SUM(f.gdp_usd) AS total_gdp_usd,
+        ROUND(SUM(f.gdp_usd) / NULLIF(AVG(q.climate_value), 0), 2) AS development_efficiency_ratio
+    FROM fact_country_metrics f
+    JOIN dim_country c ON f.country_key = c.country_key
+    JOIN dim_time t ON f.time_key = t.time_key
+    JOIN dim_quality_of_life q ON f.country_key = q.country_key
+    WHERE t.year_value BETWEEN 2020 AND 2025
+    GROUP BY c.country_name, t.year_value
+    ORDER BY t.year_value, c.country_name; 
+    """)
+    df = pd.read_sql(query, dw_engine)
+    
+    return df
+
 if __name__ == "__main__":
     df = gdp_population_correlation_report()
     print(df.head(5))
