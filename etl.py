@@ -140,23 +140,53 @@ dim_time['is_historical'] = dim_time['year_value'] < 2025
 dim_time['period_type'] = 'Annual'
 
 # --- dim_quality_of_life ---
-numeric_cols = [
+print("\n--- DEBUG: Raw Quality of Life Values ---")
+print(quality_df[['country', 'Quality of Life Value']].head(15))
+
+# Quality of Life Value has a weird format with colons that requires special handling
+if 'Quality of Life Value' in quality_df.columns:
+    def clean_quality_value(x):
+        if pd.isna(x):
+            return 0.0
+        x_str = str(x).strip()
+        
+        if x_str.startswith(':') or ':' in x_str:
+            cleaned = x_str.replace(':', '').strip()
+            cleaned = cleaned.replace("'", "").strip()
+            try:
+                result = float(cleaned) if cleaned else 0.0
+                return result
+            except ValueError:
+                return 0.0
+        else:
+            try:
+                result = float(x_str) if x_str else 0.0
+                return result
+            except ValueError:
+                return 0.0
+    
+    print("\n--- Cleaning Quality of Life Values ---")
+    quality_df['Quality of Life Value'] = quality_df['Quality of Life Value'].apply(clean_quality_value)
+
+other_numeric_cols = [
     'Purchasing Power Value', 'Safety Value', 'Health Care Value', 'Climate Value',
     'Cost of Living Value', 'Property Price to Income Value', 'Traffic Commute Time Value',
-    'Pollution Value', 'Quality of Life Value'
+    'Pollution Value'
 ]
 
-for col in numeric_cols:
+for col in other_numeric_cols:
     if col in quality_df.columns:
         quality_df[col] = (
             quality_df[col]
             .astype(str)
-            .str.replace(r'^\':\s*', '', regex=True)
             .str.replace(',', '')
             .str.strip()
         )
         quality_df[col] = pd.to_numeric(quality_df[col], errors='coerce').fillna(0)
 
+print("\n--- AFTER CLEANING Quality of Life Values ---")
+print(quality_df[['country', 'Quality of Life Value']].head(15))
+print(f"Non-zero values: {(quality_df['Quality of Life Value'] > 0).sum()}")
 category_cols = [
     'Purchasing Power Category', 'Safety Category', 'Health Care Category', 
     'Climate Category', 'Cost of Living Category', 'Property Price to Income Category',
