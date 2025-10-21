@@ -87,7 +87,7 @@ pop_data['country_norm'] = pop_data['Country or Area'].apply(normalize_country)
 
 # --- Transfer to Local SQL (staging) ---
 username = "root"
-password = "password"
+password = "admin"
 host = "localhost"
 database = "source_database"
 engine = create_engine(f'mysql+pymysql://{username}:{password}@{host}/{database}')
@@ -145,10 +145,28 @@ numeric_cols = [
     'Cost of Living Value', 'Property Price to Income Value', 'Traffic Commute Time Value',
     'Pollution Value', 'Quality of Life Value'
 ]
+
 for col in numeric_cols:
     if col in quality_df.columns:
-        quality_df[col] = quality_df[col].astype(str).str.replace(',', '').str.replace(r'^\': \s*', '', regex=True)
-        quality_df[col] = pd.to_numeric(quality_df[col], errors='coerce').fillna(0.0)
+        quality_df[col] = (
+            quality_df[col]
+            .astype(str)
+            .str.replace(r'^\':\s*', '', regex=True)
+            .str.replace(',', '')
+            .str.strip()
+        )
+        quality_df[col] = pd.to_numeric(quality_df[col], errors='coerce').fillna(0)
+
+category_cols = [
+    'Purchasing Power Category', 'Safety Category', 'Health Care Category', 
+    'Climate Category', 'Cost of Living Category', 'Property Price to Income Category',
+    'Traffic Commute Time Category', 'Pollution Category', 'Quality of Life Category'
+]
+
+for col in category_cols:
+    if col in quality_df.columns:
+        quality_df[col] = quality_df[col].replace('None', 'None')
+        quality_df[col] = quality_df[col].fillna('None')
 
 dim_quality_of_life = pd.merge(
     quality_df,
@@ -157,18 +175,6 @@ dim_quality_of_life = pd.merge(
     left_on='country_norm',
     right_on='country_name_norm'
 )
-""" # debugging unmatched countries
-unmatched = sorted(set(quality_df['country_norm'].unique()) -
-                   set(dim_quality_of_life.loc[dim_quality_of_life['country_key'].notna(),
-                                               'country_name_norm'].unique()))
-if unmatched:
-    print("\n--- WARNING: Unmatched countries in Quality of Life ---")
-    for u in unmatched:
-        print("  -", u)
-else:
-    print("\nAll Quality of Life countries matched successfully.")
-    
-"""
 
 dim_quality_of_life = dim_quality_of_life[dim_quality_of_life['country_key'].notna()].copy()
 dim_quality_of_life = dim_quality_of_life.drop(columns=[c for c in ['country', 'country_norm', 'country_name_norm', 'country_code'] if c in dim_quality_of_life.columns])
@@ -232,7 +238,7 @@ if not missing_fk.empty:
 dim_country['country_name'] = dim_country['country_name'].str.title()
 
 dw_username = "root"
-dw_password = "password"
+dw_password = "admin"
 dw_host = "localhost"
 dw_database = "country_data_warehouse"
 dw_engine = create_engine(f'mysql+pymysql://{dw_username}:{dw_password}@{dw_host}/{dw_database}')
