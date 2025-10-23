@@ -91,6 +91,85 @@ ORDER BY sort_order;
     
     return df
 
+def quality_of_life_by_region_report():
+    query = text("""
+        SELECT 
+            CASE
+                -- 🌍 Africa
+                WHEN c.country_name IN (
+                    'Algeria','Angola','Benin','Botswana','Burkina Faso','Burundi',
+                    'Cabo Verde','Cameroon','Central African Republic','Chad','Comoros',
+                    'Congo, Dem. Rep.','Congo, Rep.','Cote D''Ivoire','Djibouti','Egypt, Arab Rep.',
+                    'Equatorial Guinea','Eritrea','Eswatini','Ethiopia','Gabon','Gambia, The',
+                    'Ghana','Guinea','Guinea-Bissau','Kenya','Lesotho','Liberia','Libya',
+                    'Madagascar','Malawi','Mali','Mauritania','Mauritius','Morocco','Mozambique',
+                    'Namibia','Niger','Nigeria','Rwanda','Sao Tome And Principe','Senegal',
+                    'Seychelles','Sierra Leone','Somalia','South Africa','South Sudan','Sudan',
+                    'Tanzania','Togo','Tunisia','Uganda','Zambia','Zimbabwe'
+                ) THEN 'Africa'
+
+                -- 🌏 Asia
+                WHEN c.country_name IN (
+                    'Afghanistan','Armenia','Azerbaijan','Bahrain','Bangladesh','Bhutan',
+                    'Brunei Darussalam','Cambodia','China','Georgia','Hong Kong Sar, China',
+                    'India','Indonesia','Iran, Islamic Rep.','Iraq','Israel','Japan','Jordan',
+                    'Kazakhstan','Korea, Rep.','Kuwait','Kyrgyz Republic','Lao Pdr','Lebanon',
+                    'Malaysia','Maldives','Macao Sar, China','Mongolia','Myanmar','Nepal','Oman',
+                    'Pakistan','Palestine','Philippines','Qatar','Saudi Arabia','Singapore',
+                    'Sri Lanka','Syrian Arab Republic','Tajikistan','Taiwan','Thailand',
+                    'Timor-Leste','Turkmenistan','United Arab Emirates','Uzbekistan','Viet Nam',
+                    'Yemen, Rep.'
+                ) THEN 'Asia'
+
+                -- 🌏 Oceania
+                WHEN c.country_name IN (
+                    'Australia','Fiji','Kiribati','Marshall Islands','Micronesia, Fed. Sts.',
+                    'Nauru','New Zealand','Palau','Papua New Guinea','Samoa','Solomon Islands',
+                    'Tonga','Tuvalu','Vanuatu'
+                ) THEN 'Oceania'
+
+                -- 🌍 Europe
+                WHEN c.country_name IN (
+                    'Albania','Andorra','Austria','Belarus','Belgium','Bosnia And Herzegovina',
+                    'Bulgaria','Croatia','Cyprus','Czechia','Denmark','Estonia','Finland','France',
+                    'Germany','Greece','Hungary','Iceland','Ireland','Italy','Kosovo','Latvia',
+                    'Lithuania','Luxembourg','Malta','Moldova','Monaco','Montenegro','Netherlands',
+                    'North Macedonia','Norway','Poland','Portugal','Romania','Russian Federation',
+                    'San Marino','Serbia','Slovak Republic','Slovenia','Spain','Sweden',
+                    'Switzerland','Turkiye','Ukraine','United Kingdom'
+                ) THEN 'Europe'
+
+                -- 🌎 North America
+                WHEN c.country_name IN (
+                    'Antigua And Barbuda','Aruba','Bahamas, The','Barbados','Belize','Canada',
+                    'Costa Rica','Cuba','Dominica','Dominican Republic','El Salvador','Grenada',
+                    'Guatemala','Haiti','Honduras','Jamaica','Mexico','Nicaragua','Panama',
+                    'Puerto Rico (Us)','St. Kitts And Nevis','St. Lucia',
+                    'St. Vincent And The Grenadines','Trinidad And Tobago','United States'
+                ) THEN 'North America'
+
+                -- 🌎 South America
+                WHEN c.country_name IN (
+                    'Argentina','Bolivia','Brazil','Chile','Colombia','Ecuador','Guyana',
+                    'Paraguay','Peru','Suriname','Uruguay','Venezuela, Rb'
+                ) THEN 'South America'
+
+                ELSE 'Antarctica'
+            END AS region,
+
+            ROUND(AVG(q.quality_of_life_value), 2) AS avg_quality_of_life_index
+        FROM dim_quality_of_life q
+        JOIN dim_country c ON q.country_key = c.country_key
+        GROUP BY region
+        ORDER BY avg_quality_of_life_index DESC;
+    """)
+    df = pd.read_sql(query, dw_engine)
+    return df
+
+
+
+
+
 
 if __name__ == "__main__":
     df = traffic_commute_category_report()
