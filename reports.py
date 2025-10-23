@@ -68,6 +68,30 @@ def climate_quality_vs_economic_development_report():
     
     return df
 
+def traffic_commute_category_report():
+    query = text("""
+    SELECT q.traffic_commute_category,
+       AVG(f.gdp_per_capita) AS avg_gdp_per_capita,
+       SUM(f.population) AS total_population,
+       CASE 
+           WHEN q.traffic_commute_category LIKE '%Very High%' THEN 1
+           WHEN q.traffic_commute_category LIKE '%High%' THEN 2
+           WHEN q.traffic_commute_category LIKE '%Moderate%' THEN 3
+           WHEN q.traffic_commute_category LIKE '%Low%' AND q.traffic_commute_category NOT LIKE '%Very%' THEN 4
+           WHEN q.traffic_commute_category LIKE '%Very Low%' THEN 5
+           ELSE 6
+       END AS sort_order
+FROM fact_country_metrics f
+JOIN dim_quality_of_life q ON f.country_key = q.country_key
+GROUP BY q.traffic_commute_category
+ORDER BY sort_order;
+
+    """)
+    df = pd.read_sql(query, dw_engine)
+    
+    return df
+
+
 if __name__ == "__main__":
-    df = gdp_population_correlation_report()
+    df = traffic_commute_category_report()
     print(df.head(5))
