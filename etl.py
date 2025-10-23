@@ -241,7 +241,7 @@ gdp_df['country_norm'] = gdp_df['country_norm'].astype(str)
 fact_df = pd.merge(
     pop_df,
     gdp_df,
-    how='right',  # ✅ keep all GDP years (including 2025)
+    how='right', 
     left_on=['country_norm', 'Year'],
     right_on=['country_norm', 'Year'],
     suffixes=('_pop', '_gdp')
