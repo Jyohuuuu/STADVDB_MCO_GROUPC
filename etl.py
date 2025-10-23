@@ -87,7 +87,7 @@ pop_data['country_norm'] = pop_data['Country or Area'].apply(normalize_country)
 
 # --- Transfer to Local SQL (staging) ---
 username = "root"
-password = "admin"
+password = "password"
 host = "localhost"
 database = "source_database"
 engine = create_engine(f'mysql+pymysql://{username}:{password}@{host}/{database}')
@@ -134,7 +134,12 @@ dim_country = all_countries[['country_key', 'country_name', 'country_code']].cop
 # --- dim_time ---
 gdp_df['Year'] = pd.to_numeric(gdp_df['Year'], errors='coerce')
 pop_df['Year'] = pd.to_numeric(pop_df['Year'], errors='coerce')
-all_years = sorted(set(gdp_df['Year'].dropna().unique()) | set(pop_df['Year'].dropna().unique()))
+
+# 🔍 DEBUG: Check what years are in each dataset
+print("GDP years:", sorted(gdp_df['Year'].dropna().unique()))
+print("POP years:", sorted(pop_df['Year'].dropna().unique()))
+
+all_years = sorted(set(gdp_df['Year'].dropna().unique()) | set(pop_df['Year'].dropna().unique()) | {2025})
 dim_time = pd.DataFrame({'time_key': all_years, 'year_value': all_years})
 dim_time['is_historical'] = dim_time['year_value'] < 2025
 dim_time['period_type'] = 'Annual'
@@ -236,11 +241,12 @@ gdp_df['country_norm'] = gdp_df['country_norm'].astype(str)
 fact_df = pd.merge(
     pop_df,
     gdp_df,
-    how='inner',
+    how='right',  # ✅ keep all GDP years (including 2025)
     left_on=['country_norm', 'Year'],
     right_on=['country_norm', 'Year'],
     suffixes=('_pop', '_gdp')
 )
+
 fact_df = pd.merge(
     fact_df,
     dim_country.rename(columns={'country_name': 'country_norm'}),
@@ -268,7 +274,7 @@ if not missing_fk.empty:
 dim_country['country_name'] = dim_country['country_name'].str.title()
 
 dw_username = "root"
-dw_password = "admin"
+dw_password = "password"
 dw_host = "localhost"
 dw_database = "country_data_warehouse"
 dw_engine = create_engine(f'mysql+pymysql://{dw_username}:{dw_password}@{dw_host}/{dw_database}')

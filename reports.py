@@ -2,7 +2,7 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 
 dw_username = "root"
-dw_password = "admin"
+dw_password = "password"
 dw_host = "localhost"
 dw_database = "country_data_warehouse"
 dw_engine = create_engine(f'mysql+pymysql://{dw_username}:{dw_password}@{dw_host}/{dw_database}')
@@ -10,17 +10,23 @@ dw_engine = create_engine(f'mysql+pymysql://{dw_username}:{dw_password}@{dw_host
 
 def gdp_population_correlation_report():
     query = text("""
-        SELECT c.country_name, f.population,  f.gdp_usd, f.time_key
+        SELECT 
+            c.country_name, 
+            f.population,  
+            f.gdp_usd, 
+            f.time_key
         FROM fact_country_metrics f
-         JOIN dim_country c ON f.country_key = c.country_key
-        WHERE f.time_key = (SELECT MAX(time_key) FROM fact_country_metrics)
-         order by f.time_key
-                 
-        
+        JOIN dim_country c ON f.country_key = c.country_key
+        WHERE f.time_key = (
+            SELECT MAX(f2.time_key)
+            FROM fact_country_metrics f2
+            WHERE f2.gdp_usd > 0 AND f2.population > 0
+        )
+        ORDER BY f.time_key;
     """)
     df = pd.read_sql(query, dw_engine)
-    
     return df
+
 
 def cost_of_living_vs_purchasing_power_report():
     query = text("""
@@ -34,7 +40,7 @@ def cost_of_living_vs_purchasing_power_report():
     JOIN dim_country c ON f.country_key = c.country_key
     JOIN dim_time t ON f.time_key = t.time_key
     JOIN dim_quality_of_life q ON f.country_key = q.country_key
-    GROUP BY ROLLUP (t.year_value, c.country_name)
+    GROUP BY t.year_value, c.country_name WITH ROLLUP
     ORDER BY t.year_value, c.country_name;   
     """)
     df = pd.read_sql(query, dw_engine)
