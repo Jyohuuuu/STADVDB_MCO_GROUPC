@@ -2,7 +2,7 @@ import dash
 from dash import dcc, html, Input, Output, callback
 import plotly.express as px
 import plotly.graph_objects as go
-from reports import gdp_population_correlation_report, cost_of_living_vs_purchasing_power_report, climate_quality_vs_economic_development_report
+from reports import gdp_population_correlation_report, cost_of_living_vs_purchasing_power_report, climate_quality_vs_economic_development_report, traffic_commute_category_report
 import pandas as pd
 import random
 
@@ -11,6 +11,7 @@ import random
 gdp_pop_df = gdp_population_correlation_report()
 cost_living_df = cost_of_living_vs_purchasing_power_report()
 climate_gdp_df = climate_quality_vs_economic_development_report()
+traffic_commute_df = traffic_commute_category_report()
 
 app = dash.Dash(__name__)
 
@@ -45,6 +46,17 @@ climate_gdp_clean = climate_gdp_clean[climate_gdp_clean['country_name'].notna()]
 
 # Prepare heatmap countries list
 available_heatmap_countries = sorted(climate_gdp_clean['country_name'].unique())
+
+# Traffic Commute Category Treemap
+traffic_commute_treemap_fig = px.treemap(
+    traffic_commute_df.sort_values('sort_order'),
+    path=[px.Constant("Traffic Commute Categories"), 'traffic_commute_category'],
+    values='total_population',
+    color='avg_gdp_per_capita',
+    color_continuous_scale='Viridis',
+    title="Traffic Commute Categories: Population and Average GDP Per Capita",
+    hover_data={'total_population': ':,.0f', 'avg_gdp_per_capita': ':,.2f'}
+)
 
 app.layout = html.Div([
     html.H1("Country Metrics Dashboard", style={'textAlign': 'center', 'marginBottom': 30}),
@@ -98,6 +110,15 @@ app.layout = html.Div([
         ]),
         dcc.Graph(
             id='climate-heatmap'
+        )
+    ], style={'marginBottom': 40}),
+
+    # Traffic Commute Category Treemap Section
+    html.Div([
+        html.H2("Traffic Commute Category Treemap"),
+        dcc.Graph(
+            id='traffic-commute-treemap',
+            figure=traffic_commute_treemap_fig
         )
     ], style={'marginBottom': 40})
 ], style={'padding': 20})
