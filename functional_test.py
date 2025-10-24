@@ -11,7 +11,7 @@ from reports import (
 
 # --- Database connection configuration ---
 dw_username = "root"
-dw_password = "admin"  #adjust this
+dw_password = "password"  #adjust this
 dw_host = "localhost"
 dw_database = "country_data_warehouse"
 

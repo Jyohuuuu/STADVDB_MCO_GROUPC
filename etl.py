@@ -129,7 +129,11 @@ if 'kosovo' not in all_countries['country_name'].values:
         pd.DataFrame([{'country_key': new_key, 'country_name': 'kosovo', 'country_code': 'XKX'}])
     ], ignore_index=True)
 
-dim_country = all_countries[['country_key', 'country_name', 'country_code']].copy()
+dim_country = (
+    all_countries[['country_key', 'country_name', 'country_code']]
+    .dropna(subset=['country_code'])
+    .copy()
+)
 
 # --- dim_time ---
 gdp_df['Year'] = pd.to_numeric(gdp_df['Year'], errors='coerce')
@@ -264,6 +268,12 @@ fact_df['gdp_per_capita'] = fact_df.apply(
     axis=1
 )
 fact_country_metrics = fact_df[['country_key', 'time_key', 'gdp_usd', 'population', 'gdp_per_capita']].copy()
+
+before_count = len(fact_country_metrics)
+fact_country_metrics = fact_country_metrics.dropna(subset=['country_key'])
+after_count = len(fact_country_metrics)
+print(f"Removed {before_count - after_count} rows with missing country_key from fact_country_metrics")
+
 
 missing_fk = fact_country_metrics[fact_country_metrics['country_key'].isna()]
 if not missing_fk.empty:
