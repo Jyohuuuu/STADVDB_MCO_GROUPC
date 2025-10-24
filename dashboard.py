@@ -6,8 +6,9 @@ from reports import (
     gdp_population_correlation_report,
     cost_of_living_vs_purchasing_power_report,
     climate_quality_vs_economic_development_report,
-    quality_of_life_by_region_report  
-), traffic_commute_category_report
+    quality_of_life_by_region_report,
+    traffic_commute_category_report 
+)
 import pandas as pd
 import random
 
@@ -15,7 +16,8 @@ import random
 gdp_pop_df = gdp_population_correlation_report()
 cost_living_df = cost_of_living_vs_purchasing_power_report()
 climate_gdp_df = climate_quality_vs_economic_development_report()
-quality_region_df = quality_of_life_by_region_report()  
+quality_region_df = quality_of_life_by_region_report() 
+traffic_commute_df = traffic_commute_category_report() 
 
 app = dash.Dash(__name__)
 
