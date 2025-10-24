@@ -11,7 +11,7 @@ from reports import (
 
 # --- Database connection configuration ---
 dw_username = "root"
-dw_password = "admin"  # adjust if needed
+dw_password = "admin"  #adjust this
 dw_host = "localhost"
 dw_database = "country_data_warehouse"
 
@@ -148,8 +148,9 @@ def run_all_tests():
     passed = sum(1 for r in test_results if r["Result"] == "PASS")
     failed = len(test_results) - passed
     print(f" Passed: {passed} |  Failed: {failed}")
-    print("🎯 Functional testing complete!\n")
+    print(" Functional testing complete!\n")
 
 
 if __name__ == "__main__":
     run_all_tests()
+
